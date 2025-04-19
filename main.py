@@ -1,10 +1,17 @@
 import os
 import openai
 import PyPDF2
+from langchain.text_splitter import CharacterTextSplitter
+
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import OpenAIEmbeddings
-from langchain.chains import RetrievalQA
 from langchain_community.llms import OpenAI
+from langchain.chains import RetrievalQA
+
+from langchain.chains.qa_with_sources import load_qa_with_sources_chain
+from langchain.chains.combine_documents.base import BaseCombineDocumentsChain
+from langchain.chains.qa_generation.base import QAGenerationChain
+
 
 import os
 import PyPDF2
@@ -34,13 +41,24 @@ from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 
 def crear_indice(textos):
-    embeddings = OpenAIEmbeddings()
-    faiss_index = FAISS.from_texts(textos, embeddings)
-    return faiss_index
+  splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+  chunks = []
+  for texto in textos:
+      partes = splitter.split_text(texto)
+      chunks.extend(partes)
+  embeddings = OpenAIEmbeddings()
+  faiss_index = FAISS.from_texts(chunks, embeddings)
+  return faiss_index
 
 def configurar_qa(faiss_index):
+  retriever = faiss_index.as_retriever(search_kwargs={"k": 2})  # o incluso k=1
   llm = OpenAI(temperature=0)
-  qa = RetrievalQA.from_chain_type(llm=llm, retriever=faiss_index.as_retriever())
+  qa = RetrievalQA.from_chain_type(
+      llm=llm,
+      retriever=retriever,
+      chain_type="map_reduce",  # <-- aquí el cambio crítico
+      return_source_documents=False
+  )
   return qa
 
 if __name__ == "__main__":
@@ -57,5 +75,5 @@ if __name__ == "__main__":
       pregunta = input("📌 Tu pregunta legal: ")
       if pregunta.lower() in ["salir", "exit", "quit"]:
           break
-      respuesta = qa.run(pregunta)
+      respuesta = qa.invoke({"query": pregunta})["result"]
       print(f"🧠 Respuesta:\n{respuesta}\n")

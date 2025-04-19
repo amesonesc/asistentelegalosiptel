@@ -12,4 +12,5 @@ dependencies = [
     "faiss-cpu",
     "langchain-community>=0.3.21",
     "tiktoken>=0.9.0",
+    "langchain-openai>=0.3.14",
 ]
