@@ -1,16 +1,14 @@
-
 import os
 import PyPDF2
 import tiktoken
 import streamlit as st
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.chains.question_answering import load_qa_chain
 from langchain.schema import Document
 
 # 1. Leer PDFs y nombres de archivo
-@st.cache_data
 def cargar_pdfs_con_nombres(directorio):
     textos = []
     nombres = []
@@ -28,14 +26,13 @@ def cargar_pdfs_con_nombres(directorio):
                 nombres.append(archivo)
     return textos, nombres
 
-# 2. Crear índice con metadatos de archivo
-@st.cache_resource
+# 2. Crear índice FAISS con metadata de archivo
 def crear_indice(textos, nombres_archivos):
     splitter = CharacterTextSplitter(chunk_size=200, chunk_overlap=30)
     documentos = []
     for i, texto in enumerate(textos):
         partes = splitter.split_text(texto)
-        for j, parte in enumerate(partes):
+        for parte in partes:
             documentos.append(Document(
                 page_content=parte,
                 metadata={"source": nombres_archivos[i]}
@@ -43,19 +40,15 @@ def crear_indice(textos, nombres_archivos):
     embeddings = OpenAIEmbeddings()
     return FAISS.from_documents(documentos, embeddings)
 
-# 3. Configurar la cadena de preguntas con ChatOpenAI
-        import streamlit as st
-        from langchain_openai import ChatOpenAI
-        from langchain.chains.question_answering import load_qa_chain
+# 3. Configurar asistente con cache
+@st.cache_resource
+def configurar_qa(_faiss_index):
+    retriever = _faiss_index.as_retriever(search_kwargs={"k": 1})
+    llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
+    qa_chain = load_qa_chain(llm, chain_type="map_reduce", verbose=False)
+    return retriever, qa_chain
 
-        @st.cache_resource
-        def configurar_qa(_faiss_index):
-            retriever = _faiss_index.as_retriever(search_kwargs={"k": 1})
-            llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
-            qa_chain = load_qa_chain(llm, chain_type="map_reduce", verbose=False)
-            return retriever, qa_chain
-
-# 4. Limitar tokens por seguridad
+# 4. Limitar tokens reales
 def limitar_tokens(texto, modelo="gpt-3.5-turbo", max_tokens=7000):
     enc = tiktoken.encoding_for_model(modelo)
     tokens = enc.encode(texto)
@@ -63,7 +56,7 @@ def limitar_tokens(texto, modelo="gpt-3.5-turbo", max_tokens=7000):
         tokens = tokens[:max_tokens]
     return enc.decode(tokens)
 
-# 5. Ejecutar consulta y devolver fuente
+# 5. Ejecutar consulta y mostrar fuente
 def ejecutar_consulta(retriever, qa_chain, pregunta):
     docs = retriever.invoke(pregunta)
     if not docs:
@@ -77,28 +70,27 @@ def ejecutar_consulta(retriever, qa_chain, pregunta):
     texto_reducido = limitar_tokens(texto_total)
     docs_reducidos = [Document(page_content=texto_reducido)]
     respuesta = qa_chain.invoke({"input_documents": docs_reducidos, "question": pregunta})
-    return respuesta["output_text"] + f"\n🗂️ Fuente: {fuente}"
+    return respuesta["output_text"] + f"\n\n🗂️ Fuente: {fuente}"
 
-# 6. Interfaz de Streamlit
-st.title("📚 Asistente Legal OSIPTEL")
+# ------------------------- UI Streamlit -------------------------
+st.set_page_config(page_title="Asistente Legal OSIPTEL", page_icon="📄")
+st.title("📄 Asistente Legal OSIPTEL")
 
-# Inicialización
-with st.spinner("📂 Cargando archivos PDF..."):
-    textos, nombres_archivos = cargar_pdfs_con_nombres("pdfs")
-    st.success(f"✅ Se cargaron {len(textos)} archivos.")
+if "faiss_index" not in st.session_state:
+    with st.spinner("Cargando y procesando documentos PDF..."):
+        textos, nombres_archivos = cargar_pdfs_con_nombres("pdfs")
+        st.session_state.faiss_index = crear_indice(textos, nombres_archivos)
+        st.session_state.retriever, st.session_state.qa_chain = configurar_qa(st.session_state.faiss_index)
 
-with st.spinner("📦 Indexando documentos..."):
-    faiss_index = crear_indice(textos, nombres_archivos)
-    retriever, qa_chain = configurar_qa(faiss_index)
-    st.success("🧠 Asistente legal listo!")
+st.markdown("Escribe tu consulta legal basada en resoluciones OSIPTEL 👇")
 
-# Área de preguntas
-pregunta = st.text_input("📌 Tu pregunta legal:", placeholder="Escribe tu consulta aquí...")
+pregunta = st.text_input("🔍 Tu pregunta legal:", key="pregunta")
 
 if pregunta:
-    with st.spinner("Procesando tu consulta..."):
+    with st.spinner("Analizando jurisprudencia..."):
         try:
-            respuesta = ejecutar_consulta(retriever, qa_chain, pregunta)
-            st.markdown(f"🧾 **Respuesta:**\n{respuesta}")
+            respuesta = ejecutar_consulta(st.session_state.retriever, st.session_state.qa_chain, pregunta)
+            st.success("Respuesta:")
+            st.markdown(respuesta)
         except Exception as e:
-            st.error(f"⚠️ Error al procesar la pregunta:\n{e}")
+            st.error(f"❌ Error: {e}")
