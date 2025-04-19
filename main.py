@@ -44,14 +44,14 @@ def crear_indice(textos, nombres_archivos):
     return FAISS.from_documents(documentos, embeddings)
 
 # 3. Configurar asistente con cache
-    from langchain.chains.combine_documents import create_map_reduce_chain
+from langchain.chains.combine_documents import create_map_reduce_chain
 
-        @st.cache_resource
-        def configurar_qa(_faiss_index):
-            retriever = _faiss_index.as_retriever(search_kwargs={"k": 10})
-            llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
-            qa_chain = create_map_reduce_chain(llm)
-            return retriever, qa_chain
+@st.cache_resource
+def configurar_qa(_faiss_index):
+    retriever = _faiss_index.as_retriever(search_kwargs={"k": 10})
+    llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
+    qa_chain = create_map_reduce_chain(llm)
+    return retriever, qa_chain
             
 # 4. Limitar tokens reales
 def limitar_tokens(texto, modelo="gpt-3.5-turbo", max_tokens=7000):
