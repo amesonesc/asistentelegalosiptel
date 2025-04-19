@@ -1,6 +1,6 @@
 import os
 os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
-os.environ["STREAMLIT_SERVER_PORT"] = "8000"
+os.environ["STREAMLIT_SERVER_PORT"] = "8505"
 os.environ["STREAMLIT_SERVER_ADDRESS"] = "0.0.0.0"
 
 import PyPDF2
