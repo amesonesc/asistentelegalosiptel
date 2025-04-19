@@ -31,7 +31,7 @@ if __name__ == "__main__":
   print(textos[0][:500])  # Muestra los primeros 500 caracteres del primer PDF
 
 from langchain_community.vectorstores import FAISS
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 
 def crear_indice(textos):
     embeddings = OpenAIEmbeddings()
