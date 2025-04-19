@@ -1,6 +1,8 @@
+
 import os
 import PyPDF2
 import tiktoken
+import streamlit as st
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -8,6 +10,7 @@ from langchain.chains.question_answering import load_qa_chain
 from langchain.schema import Document
 
 # 1. Leer PDFs y nombres de archivo
+@st.cache_data
 def cargar_pdfs_con_nombres(directorio):
     textos = []
     nombres = []
@@ -26,6 +29,7 @@ def cargar_pdfs_con_nombres(directorio):
     return textos, nombres
 
 # 2. Crear índice con metadatos de archivo
+@st.cache_resource
 def crear_indice(textos, nombres_archivos):
     splitter = CharacterTextSplitter(chunk_size=200, chunk_overlap=30)
     documentos = []
@@ -40,6 +44,7 @@ def crear_indice(textos, nombres_archivos):
     return FAISS.from_documents(documentos, embeddings)
 
 # 3. Configurar la cadena de preguntas con ChatOpenAI
+@st.cache_resource
 def configurar_qa(faiss_index):
     retriever = faiss_index.as_retriever(search_kwargs={"k": 1})
     llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
@@ -70,25 +75,26 @@ def ejecutar_consulta(retriever, qa_chain, pregunta):
     respuesta = qa_chain.invoke({"input_documents": docs_reducidos, "question": pregunta})
     return respuesta["output_text"] + f"\n🗂️ Fuente: {fuente}"
 
-# 6. Programa principal
-if __name__ == "__main__":
-    print("📂 Cargando archivos PDF...")
+# 6. Interfaz de Streamlit
+st.title("📚 Asistente Legal OSIPTEL")
+
+# Inicialización
+with st.spinner("📂 Cargando archivos PDF..."):
     textos, nombres_archivos = cargar_pdfs_con_nombres("pdfs")
-    print(f"✅ Se cargaron {len(textos)} archivos.")
+    st.success(f"✅ Se cargaron {len(textos)} archivos.")
 
-    print("📦 Indexando documentos...")
+with st.spinner("📦 Indexando documentos..."):
     faiss_index = crear_indice(textos, nombres_archivos)
-
-    print("🧠 Configurando asistente legal...")
     retriever, qa_chain = configurar_qa(faiss_index)
+    st.success("🧠 Asistente legal listo!")
 
-    print("🤖 Asistente legal listo. Escribe tu consulta:\n")
-    while True:
-        pregunta = input("📌 Tu pregunta legal: ")
-        if pregunta.lower() in ["salir", "exit", "quit"]:
-            break
+# Área de preguntas
+pregunta = st.text_input("📌 Tu pregunta legal:", placeholder="Escribe tu consulta aquí...")
+
+if pregunta:
+    with st.spinner("Procesando tu consulta..."):
         try:
             respuesta = ejecutar_consulta(retriever, qa_chain, pregunta)
-            print(f"\n🧾 Respuesta:\n{respuesta}\n")
+            st.markdown(f"🧾 **Respuesta:**\n{respuesta}")
         except Exception as e:
-            print(f"⚠️ Error al procesar la pregunta:\n{e}\n")
+            st.error(f"⚠️ Error al procesar la pregunta:\n{e}")
