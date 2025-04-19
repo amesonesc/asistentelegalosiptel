@@ -1,23 +1,16 @@
 import os
-import openai
 import PyPDF2
+import tiktoken
 from langchain.text_splitter import CharacterTextSplitter
-
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import OpenAIEmbeddings
-from langchain_openai import OpenAI
-from langchain.chains import RetrievalQA
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain.chains.question_answering import load_qa_chain
+from langchain.schema import Document
 
-from langchain.chains.qa_with_sources import load_qa_with_sources_chain
-from langchain.chains.combine_documents.base import BaseCombineDocumentsChain
-from langchain.chains.qa_generation.base import QAGenerationChain
-
-
-import os
-import PyPDF2
-
-def cargar_pdfs(directorio):
+# 1. Leer PDFs y nombres de archivo
+def cargar_pdfs_con_nombres(directorio):
     textos = []
+    nombres = []
     for archivo in os.listdir(directorio):
         if archivo.endswith(".pdf"):
             ruta = os.path.join(directorio, archivo)
@@ -29,51 +22,73 @@ def cargar_pdfs(directorio):
                     if contenido:
                         texto += contenido
                 textos.append(texto)
-    return textos
+                nombres.append(archivo)
+    return textos, nombres
 
-if __name__ == "__main__":
-  textos = cargar_pdfs("pdfs")  # Usa el nombre de la carpeta donde subiste tus archivos
-  print(f"Se cargaron {len(textos)} archivos PDF.")
-  print("Primeras líneas del primer archivo:\n")
-  print(textos[0][:500])  # Muestra los primeros 500 caracteres del primer PDF
+# 2. Crear índice con metadatos de archivo
+def crear_indice(textos, nombres_archivos):
+    splitter = CharacterTextSplitter(chunk_size=200, chunk_overlap=30)
+    documentos = []
+    for i, texto in enumerate(textos):
+        partes = splitter.split_text(texto)
+        for j, parte in enumerate(partes):
+            documentos.append(Document(
+                page_content=parte,
+                metadata={"source": nombres_archivos[i]}
+            ))
+    embeddings = OpenAIEmbeddings()
+    return FAISS.from_documents(documentos, embeddings)
 
-from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
-
-def crear_indice(textos):
-  splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=100)
-  chunks = []
-  for texto in textos:
-      partes = splitter.split_text(texto)
-      chunks.extend(partes)
-  embeddings = OpenAIEmbeddings()
-  faiss_index = FAISS.from_texts(chunks, embeddings)
-  return faiss_index
-
+# 3. Configurar la cadena de preguntas con ChatOpenAI
 def configurar_qa(faiss_index):
-  retriever = faiss_index.as_retriever(search_kwargs={"k": 2})  # o incluso k=1
-  llm = OpenAI(temperature=0)
-  qa = RetrievalQA.from_chain_type(
-      llm=llm,
-      retriever=retriever,
-      chain_type="map_reduce",  # <-- aquí el cambio crítico
-      return_source_documents=False
-  )
-  return qa
+    retriever = faiss_index.as_retriever(search_kwargs={"k": 1})
+    llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
+    qa_chain = load_qa_chain(llm, chain_type="map_reduce", verbose=False)
+    return retriever, qa_chain
 
+# 4. Limitar tokens por seguridad
+def limitar_tokens(texto, modelo="gpt-3.5-turbo", max_tokens=7000):
+    enc = tiktoken.encoding_for_model(modelo)
+    tokens = enc.encode(texto)
+    if len(tokens) > max_tokens:
+        tokens = tokens[:max_tokens]
+    return enc.decode(tokens)
+
+# 5. Ejecutar consulta y devolver fuente
+def ejecutar_consulta(retriever, qa_chain, pregunta):
+    docs = retriever.invoke(pregunta)
+    if not docs:
+        return "⚠️ No se encontraron documentos relevantes."
+
+    texto_total = ""
+    fuente = docs[0].metadata.get("source", "(sin nombre)")
+    for doc in docs:
+        texto_total += doc.page_content
+
+    texto_reducido = limitar_tokens(texto_total)
+    docs_reducidos = [Document(page_content=texto_reducido)]
+    respuesta = qa_chain.invoke({"input_documents": docs_reducidos, "question": pregunta})
+    return respuesta["output_text"] + f"\n🗂️ Fuente: {fuente}"
+
+# 6. Programa principal
 if __name__ == "__main__":
-  textos = cargar_pdfs("pdfs")
-  print(f"✅ Se cargaron {len(textos)} archivos PDF.")
+    print("📂 Cargando archivos PDF...")
+    textos, nombres_archivos = cargar_pdfs_con_nombres("pdfs")
+    print(f"✅ Se cargaron {len(textos)} archivos.")
 
-  print("⏳ Indexando documentos con IA...")
-  faiss_index = crear_indice(textos)
+    print("📦 Indexando documentos...")
+    faiss_index = crear_indice(textos, nombres_archivos)
 
-  qa = configurar_qa(faiss_index)
-  print("🤖 Asistente legal listo. Escribe tu consulta:")
+    print("🧠 Configurando asistente legal...")
+    retriever, qa_chain = configurar_qa(faiss_index)
 
-  while True:
-      pregunta = input("📌 Tu pregunta legal: ")
-      if pregunta.lower() in ["salir", "exit", "quit"]:
-          break
-      respuesta = qa.invoke({"query": pregunta})["result"]
-      print(f"🧠 Respuesta:\n{respuesta}\n")
+    print("🤖 Asistente legal listo. Escribe tu consulta:\n")
+    while True:
+        pregunta = input("📌 Tu pregunta legal: ")
+        if pregunta.lower() in ["salir", "exit", "quit"]:
+            break
+        try:
+            respuesta = ejecutar_consulta(retriever, qa_chain, pregunta)
+            print(f"\n🧾 Respuesta:\n{respuesta}\n")
+        except Exception as e:
+            print(f"⚠️ Error al procesar la pregunta:\n{e}\n")
