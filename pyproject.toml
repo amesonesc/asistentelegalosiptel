@@ -9,5 +9,6 @@ dependencies = [
     "openai",
     "PyPDF2",
     "langchain",
-    "faiss-cpu"
+    "faiss-cpu",
+    "langchain-community>=0.3.21",
 ]
