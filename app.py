@@ -9,7 +9,8 @@ import streamlit as st
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain.chains.combine_documents import create_map_reduce_chain
+from langchain.chains import MapReduceDocumentsChain, LLMChain
+from langchain.prompts import PromptTemplate
 from langchain.schema import Document
 
 # 1. Leer PDFs y nombres de archivo
@@ -49,7 +50,27 @@ def crear_indice(textos, nombres_archivos):
 def configurar_qa(_faiss_index):
     retriever = _faiss_index.as_retriever(search_kwargs={"k": 10})
     llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
-    qa_chain = create_map_reduce_chain(llm)
+
+    # Create map reduce chain
+    map_template = """The following is a document excerpt:
+    {text}
+    Based on this excerpt, provide relevant information for answering: {question}
+    """
+    map_prompt = PromptTemplate(template=map_template, input_variables=["text", "question"])
+    map_chain = LLMChain(llm=llm, prompt=map_prompt)
+
+    reduce_template = """Given the following extracted information, answer the question.
+    Information: {context}
+    Question: {question}
+    """
+    reduce_prompt = PromptTemplate(template=reduce_template, input_variables=["context", "question"])
+    reduce_chain = LLMChain(llm=llm, prompt=reduce_prompt)
+
+    qa_chain = MapReduceDocumentsChain(
+        llm_chain=map_chain,
+        reduce_documents_chain=reduce_chain,
+        document_variable_name="text",
+    )
     return retriever, qa_chain
 
 # 4. Limitar tokens reales
