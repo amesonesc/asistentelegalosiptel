@@ -1,7 +1,8 @@
 streamlit
-langchain>=0.1.0
+PyPDF2
+tiktoken
+langchain>=0.1.14
+langchain-community
 langchain-openai
 openai
 faiss-cpu
-PyPDF2
-tiktoken
