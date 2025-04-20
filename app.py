@@ -41,6 +41,7 @@ def crear_indice(textos, nombres_archivos):
                 page_content=parte,
                 metadata={"source": nombres_archivos[i]}
             ))
+    st.write("Documentos cargados:", len(documentos))
     embeddings = OpenAIEmbeddings()
     return FAISS.from_documents(documentos, embeddings)
 
