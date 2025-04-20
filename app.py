@@ -9,7 +9,7 @@ import streamlit as st
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain.chains.combine_documents import create_map_reduce_chain
+from langchain.chains.question_answering import load_qa_chain
 from langchain.schema import Document
 
 # 1. Leer PDFs y nombres de archivo
@@ -44,12 +44,12 @@ def crear_indice(textos, nombres_archivos):
     embeddings = OpenAIEmbeddings()
     return FAISS.from_documents(documentos, embeddings)
 
-# 3. Configurar asistente con cache (migrado)
+# 3. Configurar asistente con método compatible
 @st.cache_resource
 def configurar_qa(_faiss_index):
     retriever = _faiss_index.as_retriever(search_kwargs={"k": 10})
     llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
-    qa_chain = create_map_reduce_chain(llm)
+    qa_chain = load_qa_chain(llm, chain_type="map_reduce", verbose=False)
     return retriever, qa_chain
 
 # 4. Limitar tokens reales

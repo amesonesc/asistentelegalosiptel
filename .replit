@@ -1,84 +1,13 @@
-entrypoint = "main.py"
+run = "streamlit run app.py --server.address 0.0.0.0 --server.port 8000 --server.headless true"
 modules = ["python-3.11"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["bash", "cargo", "libiconv", "rustc"]
-
-[unitTest]
-language = "python3"
-
-[gitHubImport]
-requiredFiles = [".replit", "replit.nix"]
+packages = ["bash", "cargo", "libiconv", "pip", "python311", "rustc", "streamlit"]
 
 [deployment]
-run = ["python3", "main.py"]
 deploymentTarget = "cloudrun"
 
-[workflows]
-runButton = "Streamlit"
-
-[[workflows.workflow]]
-name = "Streamlit"
-author = 41034253
-mode = "sequential"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "streamlit run --server.address 0.0.0.0 --server.headless true main.py"
-
 [[ports]]
-localPort = 8501
+localPort = 8000
 externalPort = 80
-
-[[ports]]
-localPort = 8502
-externalPort = 3000
-
-[[ports]]
-localPort = 8503
-externalPort = 3001
-
-[[ports]]
-localPort = 8504
-externalPort = 3002
-
-[[ports]]
-localPort = 8505
-externalPort = 3003
-
-[[ports]]
-localPort = 8506
-externalPort = 4200
-
-[[ports]]
-localPort = 8507
-externalPort = 5000
-
-[[ports]]
-localPort = 8508
-externalPort = 5173
-
-[[ports]]
-localPort = 8509
-externalPort = 6000
-
-[[ports]]
-localPort = 8510
-externalPort = 6800
-
-[[ports]]
-localPort = 8511
-externalPort = 8000
-
-[[ports]]
-localPort = 8512
-externalPort = 8008
-
-[[ports]]
-localPort = 8513
-externalPort = 8080
-
-[[ports]]
-localPort = 8514
-externalPort = 8081
